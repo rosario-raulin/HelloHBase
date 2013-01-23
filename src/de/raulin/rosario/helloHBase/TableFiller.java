@@ -28,18 +28,21 @@ import au.com.bytecode.opencsv.CSVReader;
 public final class TableFiller {
 
 	private static final String TABLE_NAME = "locations";
+	private static final String SECONDARY_NAME = "comments";
 	private final static byte[] POSTFIX = new byte[] { 0 };
 
 	public static final byte[] COMMENT_FAMILY = Bytes.toBytes("c");
 	public static final byte[] COMMENT_COUNTER = Bytes
 			.toBytes("comment_counter");
 	public static final byte[] VALUE_FAMILY = Bytes.toBytes("v");
-
+	
 	private final HTable table;
+	private final HTable secondary;
 
 	public TableFiller() throws IOException {
 		final Configuration conf = HBaseConfiguration.create();
 		this.table = new HTable(conf, TABLE_NAME);
+		this.secondary = new HTable(conf, SECONDARY_NAME);
 	}
 
 	public void fillTable(final String inputPath) throws IOException {
@@ -63,14 +66,17 @@ public final class TableFiller {
 		for (final Result result : scanner) {
 			final int commentNumber = getCommentNumber(result);
 			final List<Put> requests = new ArrayList<Put>(numberPerEntry);
+			final List<Put> secondaryRequest = new ArrayList<Put>(numberPerEntry);
 
 			for (int i = 0; i < numberPerEntry; ++i) {
 				final Comment comment = new Comment(commentNumber + i);
 				requests.add(comment.asPutRequest(result.getRow()));
+				secondaryRequest.add(comment.asSecondaryRequest(result.getRow()));
 			}
 			requests.add(getSetCounterRequest(commentNumber + numberPerEntry,
 					result.getRow()));
 			table.put(requests);
+			secondary.put(secondaryRequest);
 		}
 	}
 
@@ -171,6 +177,18 @@ public final class TableFiller {
 		scanner.close();
 	}
 
+	public void getLatest(int number) throws IOException {
+		final Filter pageFilter = new PageFilter(number);
+		final Scan scan = new Scan();
+		scan.setFilter(pageFilter);
+		final ResultScanner scanner = secondary.getScanner(scan);
+		
+		for (final Result result : scanner) {
+			final Comment comment = new Comment(result);
+			System.out.println(comment);
+		}
+	}
+	
 	public static void main(String[] args) {
 		if (args.length >= 1) {
 			try {
@@ -194,6 +212,8 @@ public final class TableFiller {
 					filler.printInterval();
 				} else if (args[0].equals("pagewise")) {
 					filler.readPagewise(10);
+				} else if (args[0].equals("latest")) {
+					filler.getLatest(10);
 				} else {
 					printUsage();
 				}
@@ -207,6 +227,6 @@ public final class TableFiller {
 
 	private static void printUsage() {
 		System.err
-				.println("usage: [fill/add/getRange/interval/pagewise] [data-input]");
+				.println("usage: [fill/add/getRange/interval/pagewise/latest] [data-input]");
 	}
 }

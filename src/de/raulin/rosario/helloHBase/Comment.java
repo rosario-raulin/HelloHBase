@@ -38,6 +38,21 @@ public final class Comment implements Comparable<Comment> {
 		this.time = Bytes.toLong(time);
 	}
 
+	public Comment(final Result result) {
+		this.number = 42; // can be ignored
+
+		final byte[] text = result.getValue(TableFiller.COMMENT_FAMILY,
+				getSecondaryColName("text"));
+		final byte[] author = result.getValue(TableFiller.COMMENT_FAMILY,
+				getSecondaryColName("author"));
+		final byte[] time = result.getValue(TableFiller.COMMENT_FAMILY,
+				getSecondaryColName("time"));
+
+		this.author = Bytes.toString(author);
+		this.text = Bytes.toString(text);
+		this.time = Bytes.toLong(time);
+	}
+
 	private String generateRandomString() {
 		return String.format("%d_%s", number,
 				new BigInteger(130, RANDGEN).toString(32));
@@ -58,8 +73,31 @@ public final class Comment implements Comparable<Comment> {
 		return req;
 	}
 
+	public Put asSecondaryRequest(final byte[] row) {
+		final String oldRow = Bytes.toString(row);
+		final byte[] rowKey = Bytes.toBytes((Long.MAX_VALUE - time) + "_"
+				+ oldRow);
+
+		final Put req = new Put(rowKey);
+
+		final byte[] authorName = getSecondaryColName("author");
+		final byte[] textName = getSecondaryColName("text");
+		final byte[] timeName = getSecondaryColName("time");
+
+		final byte[] bTime = Bytes.toBytes(time);
+		req.add(TableFiller.COMMENT_FAMILY, authorName, Bytes.toBytes(author));
+		req.add(TableFiller.COMMENT_FAMILY, textName, Bytes.toBytes(text));
+		req.add(TableFiller.COMMENT_FAMILY, timeName, bTime);
+
+		return req;
+	}
+
 	private byte[] getColName(final String type) {
 		return Bytes.toBytes(String.format(COL_FORMAT_STRING, number, type));
+	}
+
+	private byte[] getSecondaryColName(final String type) {
+		return Bytes.toBytes(String.format("comment_%s", type));
 	}
 
 	@Override
